@@ -12,6 +12,8 @@ export const ENTITY_MOODS = [
 
 export type EntityMood = (typeof ENTITY_MOODS)[number];
 
+export type EntityName = 'UNKNOWN' | 'THE OTHER';
+
 export interface AIWhisperResponse {
   shouldSpeak: boolean;
   whisper: string;
@@ -20,6 +22,10 @@ export interface AIWhisperResponse {
   possessionChange: number;
   eventSuggestion: string | null;
   memoryNote: string | null;
+  horrorEvent?: string | null;
+  entity?: EntityName;
+  commandHandled?: boolean;
+  commandOutput?: string;
 }
 
 export interface CommandContext {

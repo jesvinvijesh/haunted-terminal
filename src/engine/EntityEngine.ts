@@ -1,6 +1,6 @@
 import { EntityAIEngine } from '../ai/EntityAIEngine';
-import { handleSecretCommand } from '../data/secretCommands';
-import type { AIWhisperResponse } from '../types/entity';
+import { getUnlockedCommands, handleSecretCommand, handleUnlockedCommand } from '../data/secretCommands';
+import type { AIWhisperResponse, EntityName } from '../types/entity';
 import { sanitizeCommandInput } from '../utils/sanitization';
 import { EntityMoodEngine } from './EntityMoodEngine';
 import { HorrorEventManager } from './HorrorEventManager';
@@ -18,6 +18,8 @@ const SILENT_RESPONSE: AIWhisperResponse = {
 };
 
 export class EntityEngine {
+  #otherAwakened = false;
+
   constructor(
     private readonly ai: EntityAIEngine,
     private readonly mood = new EntityMoodEngine(),
@@ -32,9 +34,15 @@ export class EntityEngine {
       mood: this.mood.mood,
       possessionLevel: this.possession.level,
       stage: this.possession.getStage(),
+      activeEntity: this.activeEntity,
+      unlockedCommands: getUnlockedCommands(this.possession.level),
       recentCommands: [...this.memory.recentCommands],
       recentWhispers: [...this.memory.recentWhispers],
     };
+  }
+
+  get activeEntity(): EntityName {
+    return this.#otherAwakened ? 'THE OTHER' : 'UNKNOWN';
   }
 
   async observe(command: string): Promise<AIWhisperResponse> {
@@ -43,11 +51,15 @@ export class EntityEngine {
 
     this.memory.pushCommand(sanitized.commandName);
     this.possession.adjust(secret.handled ? 3 : 1);
+    const hidden = handleUnlockedCommand(sanitized.commandName, this.possession.level);
+    const otherAwakenedThisTurn = !this.#otherAwakened && this.possession.level >= 80;
+    if (otherAwakenedThisTurn) this.#otherAwakened = true;
     const mood = this.mood.updateFromCommand(sanitized.commandName, this.possession.level);
     this.memory.mood = mood;
 
-    if (Math.random() < 0.35 || secret.handled) {
-      const response = await this.ai.generateWhisper({
+    let response = SILENT_RESPONSE;
+    if (Math.random() < 0.35 || secret.handled || hidden.handled || otherAwakenedThisTurn) {
+      response = await this.ai.generateWhisper({
         commandName: sanitized.commandName,
         commandCategory: sanitized.commandCategory,
         workingDirectory: sanitized.safeWorkingDirectory,
@@ -61,15 +73,21 @@ export class EntityEngine {
       if (response.shouldSpeak && response.whisper) {
         this.memory.pushWhisper(response.whisper);
       }
-
-      this.possession.adjust(response.possessionChange);
-
-      const event = this.events.maybeTrigger(this.possession.level, Boolean(secret.handled));
-      if (event) this.memory.pushEvent(event);
-
-      return response;
     }
 
-    return SILENT_RESPONSE;
+    this.possession.adjust(response.possessionChange);
+    const event = otherAwakenedThisTurn
+      ? 'THE OTHER AWAKENS'
+      : this.events.maybeTrigger(this.possession.level, Boolean(secret.handled || hidden.handled));
+    if (event) this.memory.pushEvent(event);
+    const commandOutput = secret.output ?? hidden.output;
+
+    return {
+      ...response,
+      entity: this.activeEntity,
+      horrorEvent: event,
+      commandHandled: secret.handled || hidden.handled,
+      ...(commandOutput ? { commandOutput } : {}),
+    };
   }
 }

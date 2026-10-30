@@ -6,6 +6,7 @@ export * from './ai/LlamaCppProvider';
 export * from './ai/LocalModelManager';
 export * from './ai/ModelSettingsManager';
 export * from './ai/OllamaProvider';
+export * from './ai/OfflineEntityProvider';
 export * from './ai/PromptManager';
 
 export * from './data/secretCommands';
